@@ -1,0 +1,45 @@
+name: Upload secret file to S3 (OIDC)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  S3_BUCKET: tp-ci-cd-magali
+
+permissions:
+  id-token: write 
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::719640820900:role/GitHubOIDCRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create file with secret and metadata
+        run: |
+          set +x
+          mkdir -p out
+          FILE="out/output-$(date -u +'%Y%m%dT%H%M%SZ').txt"
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" > "$FILE"
+          echo "repo=${{ github.repository }}" >> "$FILE"
+          echo "commit=${{ github.sha }}" >> "$FILE"
+          echo "run_id=${{ github.run_id }}" >> "$FILE"
+          echo "secret=${{ secrets.SECRET_TO_WRITE }}" >> "$FILE"
+          echo "Archivo generado: $FILE"
+
+      - name: Upload file to S3
+        run: |
+          aws s3 cp out/ s3://${{ env.S3_BUCKET }}/ --recursive
